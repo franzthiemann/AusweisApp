@@ -15,8 +15,18 @@ Q_IMPORT_PLUGIN(SimulatorReaderManagerPlugin)
 Q_IMPORT_PLUGIN(RemoteIfdReaderManagerPlugin)
 #endif
 
+#if defined(UBUNTU_TOUCH)
+// Ubuntu Touch reaches the NFC hardware through nfcd over D-Bus. A static
+// plugin is only pulled out of its archive by Q_IMPORT_PLUGIN, so without this
+// the plugin links but never registers and no reader appears.
+Q_IMPORT_PLUGIN(NfcdReaderManagerPlugin)
+#endif
+
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS) && !defined(Q_OS_WINRT)
+	#if !defined(UBUNTU_TOUCH)
+// No pcscd on Ubuntu Touch, and the plugin is not built there.
 Q_IMPORT_PLUGIN(PcscReaderManagerPlugin)
+	#endif
 
 	#if !defined(INTEGRATED_SDK) || defined(CONTAINER_SDK)
 Q_IMPORT_PLUGIN(UiPluginWebService)

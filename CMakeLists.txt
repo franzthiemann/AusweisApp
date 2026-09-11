@@ -61,6 +61,13 @@ if(CONTAINER_SDK)
 	set(INTEGRATED_SDK ON)
 endif()
 
+if(UBUNTU_TOUCH)
+	# main.cpp needs this at preprocessing time to pick the right static plugins.
+	# INTEGRATED_SDK/CONTAINER_SDK are CMake-only and never become -D flags, so
+	# there is nothing here to piggyback on.
+	add_definitions(-DUBUNTU_TOUCH)
+endif()
+
 include(Helper)
 
 if(NOT VENDOR)
