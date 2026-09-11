@@ -11,8 +11,14 @@
 
 add_subdirectory(base)
 
-if(DESKTOP AND NOT UBUNTU_TOUCH)
-	add_subdirectory(pcsc)
+if(DESKTOP)
+	# drivers (ReaderDetector) is not optional -- card/base includes its header
+	# and links it -- and it needs only libudev, so it builds fine here. Only
+	# the PC/SC plugin is dropped: Ubuntu Touch has no pcscd and confinement
+	# grants no USB access, so it could never find a reader.
+	if(NOT UBUNTU_TOUCH)
+		add_subdirectory(pcsc)
+	endif()
 	add_subdirectory(drivers)
 endif()
 

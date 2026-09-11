@@ -274,8 +274,11 @@ if(TARGET AusweisAppCardSmart)
 	endif()
 endif()
 
-if(DESKTOP AND NOT UBUNTU_TOUCH)
-	target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardPcsc AusweisAppCardDrivers)
+if(DESKTOP)
+	if(NOT UBUNTU_TOUCH)
+		target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardPcsc)
+	endif()
+	target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardDrivers)
 endif()
 
 if(UBUNTU_TOUCH)

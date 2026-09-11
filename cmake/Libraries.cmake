@@ -171,11 +171,32 @@ if(QT_COMPONENTS)
 endif()
 
 if(LINUX OR BSD)
-	try_run(testResult compileResult "${CMAKE_BINARY_DIR}" "${CMAKE_DIR}/tests/openssl.cpp"
-		CMAKE_FLAGS INSTALL_RPATH_USE_LINK_PATH:BOOL=ON
-		LINK_LIBRARIES ${Qt}::Network OpenSSL::Crypto OpenSSL::SSL
-		OUTPUT_VARIABLE runResult)
-	if(NOT testResult EQUAL 0)
-		message(FATAL_ERROR "Your OpenSSL library looks incompatible: ${testResult}\n${runResult}")
+	if(UBUNTU_TOUCH)
+		# Cross-compiling: the test binary is arm64 and cannot run on the amd64
+		# build host, so try_run compiles it and then feeds an ELF to /bin/sh
+		# ("Syntax error: Unterminated quoted string").
+		#
+		# The check is not dropped, it is split. Its compile-time half -- the
+		# #error directives requiring CMS, EC, TLS 1.2 and PSK -- still runs
+		# here via try_compile. Its runtime half (Qt and AusweisApp linking the
+		# same OpenSSL, and an RSA-PSK cipher being available) is verified on
+		# the device by a real authentication against the test service, which
+		# exercises exactly that TLS-PSK path end to end.
+		try_compile(compileResult "${CMAKE_BINARY_DIR}" "${CMAKE_DIR}/tests/openssl.cpp"
+			CMAKE_FLAGS INSTALL_RPATH_USE_LINK_PATH:BOOL=ON
+			LINK_LIBRARIES ${Qt}::Network OpenSSL::Crypto OpenSSL::SSL
+			OUTPUT_VARIABLE compileOutput)
+		if(NOT compileResult)
+			message(FATAL_ERROR "Your OpenSSL library looks incompatible:\n${compileOutput}")
+		endif()
+		message(STATUS "OpenSSL: compile-time checks passed; run-time check deferred to the device")
+	else()
+		try_run(testResult compileResult "${CMAKE_BINARY_DIR}" "${CMAKE_DIR}/tests/openssl.cpp"
+			CMAKE_FLAGS INSTALL_RPATH_USE_LINK_PATH:BOOL=ON
+			LINK_LIBRARIES ${Qt}::Network OpenSSL::Crypto OpenSSL::SSL
+			OUTPUT_VARIABLE runResult)
+		if(NOT testResult EQUAL 0)
+			message(FATAL_ERROR "Your OpenSSL library looks incompatible: ${testResult}\n${runResult}")
+		endif()
 	endif()
 endif()
