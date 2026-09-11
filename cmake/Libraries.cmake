@@ -135,7 +135,11 @@ elseif(UNIX)
 		endif()
 	endif()
 
-	find_package(PCSC REQUIRED)
+	if(NOT UBUNTU_TOUCH)
+	# Ubuntu Touch has no pcscd and confinement grants no USB access, so the
+	# PC/SC reader plugin would be dead weight in the click.
+		find_package(PCSC REQUIRED)
+	endif()
 endif()
 
 

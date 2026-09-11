@@ -11,7 +11,7 @@
 
 add_subdirectory(base)
 
-if(DESKTOP)
+if(DESKTOP AND NOT UBUNTU_TOUCH)
 	add_subdirectory(pcsc)
 	add_subdirectory(drivers)
 endif()
