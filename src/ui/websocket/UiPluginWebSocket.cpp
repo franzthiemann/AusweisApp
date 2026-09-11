@@ -79,7 +79,16 @@ void UiPluginWebSocket::onWorkflowStarted(const QSharedPointer<WorkflowRequest>&
 	{
 		mContext = pRequest->getContext();
 		mContext->claim(this);
+#if defined(UBUNTU_TOUCH)
+		// NFC here means the nfcd plugin, and PCSC is not built on Ubuntu Touch
+		// (no pcscd, and confinement grants a click no USB access). Without NFC
+		// in this list StateSelectReader's ReaderFilter discards the reader
+		// before it ever asks whether a card is present, so a detected eID card
+		// is simply ignored and the workflow waits forever.
+		mContext->setReaderPluginTypes({ReaderManagerPluginType::NFC, ReaderManagerPluginType::REMOTE_IFD, ReaderManagerPluginType::SIMULATOR});
+#else
 		mContext->setReaderPluginTypes({ReaderManagerPluginType::PCSC, ReaderManagerPluginType::REMOTE_IFD, ReaderManagerPluginType::SIMULATOR});
+#endif
 	}
 }
 
