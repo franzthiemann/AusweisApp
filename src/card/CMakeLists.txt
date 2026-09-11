@@ -20,6 +20,10 @@ if(TARGET ${Qt}::Nfc)
 	add_subdirectory(nfc)
 endif()
 
+if(UBUNTU_TOUCH)
+	add_subdirectory(nfcd)
+endif()
+
 if(USE_SMARTEID)
 	add_subdirectory(smart)
 endif()

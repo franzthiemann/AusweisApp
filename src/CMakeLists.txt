@@ -278,6 +278,10 @@ if(DESKTOP)
 	target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardPcsc AusweisAppCardDrivers)
 endif()
 
+if(UBUNTU_TOUCH)
+	target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardNfcd)
+endif()
+
 target_link_libraries(AusweisAppBinary PRIVATE AusweisAppCardSimulator)
 
 #####################################################################

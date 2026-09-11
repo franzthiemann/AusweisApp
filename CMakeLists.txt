@@ -53,6 +53,7 @@ if(APPLE AND NOT tools.only)
 endif()
 
 option(BUILD_SHARED_LIBS "Enable build of shared libraries")
+option(UBUNTU_TOUCH "Build the nfcd card reader plugin for Ubuntu Touch" OFF)
 option(INTEGRATED_SDK "Build platform specific SDK" OFF)
 option(CONTAINER_SDK "Build container specific SDK" OFF)
 

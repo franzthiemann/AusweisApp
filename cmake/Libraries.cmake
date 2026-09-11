@@ -47,6 +47,11 @@ if(ANDROID OR IOS OR WINDOWS_STORE OR CMAKE_BUILD_TYPE STREQUAL "DEBUG")
 	list(APPEND QT_COMPONENTS Nfc)
 endif()
 
+if(UBUNTU_TOUCH)
+	# The nfcd card reader plugin talks to nfcd over the system bus.
+	list(APPEND QT_COMPONENTS DBus)
+endif()
+
 if(ANDROID)
 	if(QT_VERSION VERSION_GREATER_EQUAL "6.10")
 		list(APPEND QT_COMPONENTS CorePrivate)
