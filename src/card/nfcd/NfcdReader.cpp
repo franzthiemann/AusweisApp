@@ -60,8 +60,41 @@ NfcdReader::NfcdReader(const QString& pAdapterPath)
 		}
 	}
 
-	QDBusConnection::systemBus().connect(nfcd::SERVICE, mAdapterPath, nfcd::IFACE_ADAPTER,
-			QStringLiteral("TagsChanged"), this, SLOT(onTagsChanged(QList<QDBusObjectPath>)));
+	// "ao" only demarshals into QList<QDBusObjectPath> once that type is known to
+	// the D-Bus type system; without it the signal arrives and is dropped.
+	qDBusRegisterMetaType<QList<QDBusObjectPath>>();
+
+	const bool subscribed = QDBusConnection::systemBus().connect(nfcd::SERVICE, mAdapterPath,
+			nfcd::IFACE_ADAPTER, QStringLiteral("TagsChanged"), this,
+			SLOT(onTagsChanged(QList<QDBusObjectPath>)));
+	if (!subscribed)
+	{
+		qCWarning(card_nfc) << "Cannot subscribe to TagsChanged on" << mAdapterPath
+							<< "-- falling back to polling";
+	}
+
+	// Poll as well as subscribe. nfcd demonstrably emits TagsChanged, but a
+	// dropped subscription is invisible at runtime -- the reader simply never
+	// notices a card, which is indistinguishable from bad antenna placement.
+	// Polling only runs between connectReader() and disconnectReader(), i.e.
+	// exactly while a card is being waited for, so it costs nothing at idle.
+	connect(&mPollTimer, &QTimer::timeout, this, &NfcdReader::pollTags);
+	mPollTimer.setInterval(POLL_INTERVAL_MS);
+}
+
+
+void NfcdReader::pollTags()
+{
+	auto msg = QDBusMessage::createMethodCall(nfcd::SERVICE, mAdapterPath,
+			nfcd::IFACE_ADAPTER, QStringLiteral("GetTags"));
+
+	const QDBusMessage reply = QDBusConnection::systemBus().call(msg);
+	if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+	{
+		return;
+	}
+
+	onTagsChanged(qdbus_cast<QList<QDBusObjectPath>>(reply.arguments().constFirst()));
 }
 
 
@@ -114,6 +147,9 @@ void NfcdReader::connectReader()
 
 	mModeRequestId = reply.arguments().constFirst().toUInt();
 	qCDebug(card_nfc) << "Reader mode enabled, request id" << mModeRequestId;
+
+	mPollTimer.start();
+	pollTags();   // a card may already be on the antenna
 }
 
 
@@ -121,6 +157,8 @@ void NfcdReader::disconnectReader(const QString& pError)
 {
 	Q_UNUSED(pError)
 
+	mPollTimer.stop();
+	mKnownTags.clear();
 	handleTagLost();
 
 	if (mModeRequestId == 0)
@@ -144,7 +182,15 @@ void NfcdReader::onTagsChanged(const QList<QDBusObjectPath>& pTags)
 	{
 		paths << tag.path();
 	}
-	qCDebug(card_nfc) << "TagsChanged:" << paths;
+	// Arrival and removal come from both the TagsChanged signal and the poll, so
+	// act (and log) only on an actual change -- otherwise the poll narrates the
+	// same unchanged tag several times a second and buries everything else.
+	if (paths == mKnownTags)
+	{
+		return;
+	}
+	mKnownTags = paths;
+	qCDebug(card_nfc) << "Tags:" << paths;
 
 	if (mCard && !paths.contains(mCard->getTagPath()))
 	{

@@ -12,6 +12,8 @@
 #include <QDBusObjectPath>
 #include <QList>
 #include <QScopedPointer>
+#include <QStringList>
+#include <QTimer>
 #include <QString>
 
 
@@ -34,6 +36,10 @@ class NfcdReader
 		const QString mAdapterPath;
 		QScopedPointer<NfcdCard, QScopedPointerDeleteLater> mCard;
 		uint mModeRequestId;
+		QTimer mPollTimer;
+		QStringList mKnownTags;
+
+		static constexpr int POLL_INTERVAL_MS = 700;
 
 		void handleTagArrived(const QString& pTagPath);
 		void handleTagLost();
@@ -42,6 +48,7 @@ class NfcdReader
 
 	private Q_SLOTS:
 		void onTagsChanged(const QList<QDBusObjectPath>& pTags);
+		void pollTags();
 
 	public:
 		explicit NfcdReader(const QString& pAdapterPath);
