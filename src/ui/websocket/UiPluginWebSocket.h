@@ -6,6 +6,7 @@
 
 #include "HttpRequest.h"
 #include "HttpServer.h"
+#include "IfdServiceHandler.h"
 #include "UiPlugin.h"
 #include "UiPluginJson.h"
 
@@ -32,6 +33,7 @@ class UiPluginWebSocket
 		QSharedPointer<HttpRequest> mRequest;
 		QPointer<UiPluginJson> mJson;
 		QSharedPointer<WorkflowContext> mContext;
+		IfdServiceHandler mIfdService;
 		bool mUiDomination;
 		bool mUiDominationPrevUsedAsSDK;
 

@@ -6,6 +6,7 @@
 
 #include "Env.h"
 #include "ReaderManager.h"
+#include "context/IfdServiceContext.h"
 #include "UiLoader.h"
 #include "VolatileSettings.h"
 #include "WorkflowRequest.h"
@@ -31,6 +32,7 @@ UiPluginWebSocket::UiPluginWebSocket()
 	, mRequest()
 	, mJson(nullptr)
 	, mContext()
+	, mIfdService()
 	, mUiDomination(false)
 	, mUiDominationPrevUsedAsSDK(false)
 {
@@ -58,6 +60,9 @@ bool UiPluginWebSocket::initialize()
 		return false;
 	}
 
+	connect(&mIfdService, &IfdServiceHandler::fireMessage, this, &UiPluginWebSocket::onJsonMessage);
+	connect(&mIfdService, &IfdServiceHandler::fireWorkflowRequested, this, &UiPluginWebSocket::fireWorkflowRequested);
+
 	qCDebug(websocket) << "Enable WebSocket...";
 	connect(mHttpServer.data(), &HttpServer::fireNewWebSocketRequest, this, &UiPluginWebSocket::onNewWebSocketRequest);
 	connect(mHttpServer.data(), &HttpServer::fireRebound, this, [this]{
@@ -75,6 +80,14 @@ bool UiPluginWebSocket::initialize()
 
 void UiPluginWebSocket::onWorkflowStarted(const QSharedPointer<WorkflowRequest>& pRequest)
 {
+	// Our own IFD service workflow. It needs a different reader set and must not
+	// be claimed as though it were an authentication.
+	if (pRequest->getContext().objectCast<IfdServiceContext>())
+	{
+		mIfdService.onWorkflowStarted(pRequest->getContext());
+		return;
+	}
+
 	if (mUiDomination)
 	{
 		mContext = pRequest->getContext();
@@ -95,6 +108,12 @@ void UiPluginWebSocket::onWorkflowStarted(const QSharedPointer<WorkflowRequest>&
 
 void UiPluginWebSocket::onWorkflowFinished(const QSharedPointer<WorkflowRequest>& pRequest)
 {
+	if (pRequest->getContext().objectCast<IfdServiceContext>())
+	{
+		mIfdService.onWorkflowFinished(pRequest->getContext());
+		return;
+	}
+
 	Q_UNUSED(pRequest)
 
 	mContext.clear();
@@ -186,6 +205,10 @@ void UiPluginWebSocket::onClientDisconnected()
 {
 	qCDebug(websocket) << "Client disconnected...";
 
+	// Nothing is left to control the IFD service, and leaving it up would keep
+	// the phone advertising itself as a card reader with no UI to stop it.
+	mIfdService.reset();
+
 	if (mContext && mUiDomination)
 	{
 		const QSignalBlocker blocker(mJson);
@@ -201,10 +224,22 @@ void UiPluginWebSocket::onClientDisconnected()
 
 void UiPluginWebSocket::onTextMessageReceived(const QString& pMessage)
 {
-	if (mConnection)
+	if (!mConnection)
 	{
-		mJson->doMessageProcessing(pMessage.toUtf8());
+		return;
 	}
+
+	const auto& message = pMessage.toUtf8();
+
+	// The IFD commands are a private extension of this fork. Handling them here
+	// rather than in the JSON API keeps the published protocol untouched; the
+	// handler claims only cmds beginning "IFD_" and passes everything else on.
+	if (mIfdService.process(message))
+	{
+		return;
+	}
+
+	mJson->doMessageProcessing(message);
 }
 
 
