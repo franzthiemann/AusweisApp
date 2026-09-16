@@ -7,6 +7,7 @@
 #include "IfdServiceHandler.h"
 
 #include "AppSettings.h"
+#include "SmartCardDefinitions.h"
 #include "Env.h"
 #include "ReaderManager.h"
 #include "RemoteIfdServer.h"
@@ -114,6 +115,12 @@ bool IfdServiceHandler::process(const QByteArray& pMessage)
 	else if (cmd == QLatin1String("IFD_GET_STATUS"))
 	{
 		sendStatus();
+	}
+	else if (cmd == QLatin1String("IFD_SET_PIN")
+			|| cmd == QLatin1String("IFD_SET_CAN")
+			|| cmd == QLatin1String("IFD_SET_PUK"))
+	{
+		handleSetSecret(cmd, obj);
 	}
 	else
 	{
@@ -234,14 +241,82 @@ void IfdServiceHandler::onPairingCompleted(const QSslCertificate& pCertificate)
 
 void IfdServiceHandler::onStateChanged(const QString& pNewState)
 {
-	Q_UNUSED(pNewState)
-
-	// The IFD service workflow is driven by the remote PC, not by a local user,
-	// so every state is approved as it arrives -- the same as UiPluginLocalIfd.
-	if (mContext)
+	if (!mContext)
 	{
-		mContext->setStateApproved();
+		return;
 	}
+
+	// The whole point of "smartphone as card reader" is that the secret is typed
+	// on the phone, never on the PC: pinPadMode defaults to true and the card is
+	// in the user's hand here. So this one state must NOT be waved through --
+	// StateEnterPacePasswordIfd::run() continues immediately, and approving it
+	// before a secret has been set sends PACE an empty password. Ask the UI, and
+	// approve only once it answers.
+	if (pNewState == QLatin1String("StateEnterPacePasswordIfd"))
+	{
+		QJsonObject msg;
+		msg[MSG] = QStringLiteral("IFD_ENTER_SECRET");
+		msg[QLatin1String("secret")] = passwordKind();
+		send(msg);
+		return;
+	}
+
+	// Everything else is driven by the remote PC, not by a local user.
+	mContext->setStateApproved();
+}
+
+
+QString IfdServiceHandler::passwordKind() const
+{
+	if (!mContext)
+	{
+		return QStringLiteral("pin");
+	}
+
+	switch (mContext->getEstablishPaceChannelType())
+	{
+		case PacePasswordId::PACE_CAN:
+			return QStringLiteral("can");
+
+		case PacePasswordId::PACE_PUK:
+			return QStringLiteral("puk");
+
+		default:
+			return QStringLiteral("pin");
+	}
+}
+
+
+void IfdServiceHandler::handleSetSecret(const QString& pCmd, const QJsonObject& pCommand)
+{
+	if (!mContext)
+	{
+		sendError(QStringLiteral("%1 with no active IFD workflow").arg(pCmd));
+		return;
+	}
+
+	const auto& value = pCommand[QLatin1String("value")].toString();
+	if (value.isEmpty())
+	{
+		sendError(QStringLiteral("%1 requires a value").arg(pCmd));
+		return;
+	}
+
+	if (pCmd == QLatin1String("IFD_SET_CAN"))
+	{
+		mContext->setCan(value);
+	}
+	else if (pCmd == QLatin1String("IFD_SET_PUK"))
+	{
+		mContext->setPuk(value);
+	}
+	else
+	{
+		mContext->setPin(value);
+	}
+
+	// Now, and only now, let the state proceed.
+	mContext->setStateApproved();
 }
 
 

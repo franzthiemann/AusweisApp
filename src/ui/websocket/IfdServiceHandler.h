@@ -50,6 +50,8 @@ class IfdServiceHandler
 		void handleStart(const QJsonObject& pCommand);
 		void handleStop();
 		void handleSetName(const QJsonObject& pCommand);
+		void handleSetSecret(const QString& pCmd, const QJsonObject& pCommand);
+		[[nodiscard]] QString passwordKind() const;
 
 	private Q_SLOTS:
 		void onStateChanged(const QString& pNewState);
