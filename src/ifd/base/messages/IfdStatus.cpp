@@ -90,10 +90,27 @@ IfdStatus::IfdStatus(const ReaderInfo& pReaderInfo, bool pPublishCard)
 	, mConnectedReader(pReaderInfo.isValid())
 	, mCardAvailable(pReaderInfo.hasCard() && pPublishCard)
 {
+#if defined(UBUNTU_TOUCH)
+	// Upstream suppresses the pin-pad claim whenever AusweisApp runs as an SDK,
+	// because a third-party host application's PIN entry cannot be trusted. On
+	// Ubuntu Touch the SDK client is this project's own UI, which implements
+	// entry on the device (IFD_ENTER_SECRET / IFD_SET_PIN), so the claim is
+	// honest here.
+	//
+	// It also matters: without it the phone advertises itself as a basic reader,
+	// the PC prompts for the PIN and sends it over the wire, and "smartphone as
+	// card reader" loses the property it exists for -- the PIN never leaving the
+	// device holding the card.
+	if (mHasPinPad)
+	{
+		return;
+	}
+#else
 	if (mHasPinPad || Env::getSingleton<VolatileSettings>()->isUsedAsSDK())
 	{
 		return;
 	}
+#endif
 
 	switch (pReaderInfo.getPluginType())
 	{
