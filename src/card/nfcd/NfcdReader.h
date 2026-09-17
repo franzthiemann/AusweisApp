@@ -38,6 +38,11 @@ class NfcdReader
 		uint mModeRequestId;
 		QTimer mPollTimer;
 		QStringList mKnownTags;
+		int mUnreadableAttempts = 0;
+
+		/*! How often to re-read a card that is detected but not identifiable
+		    before reporting it as unknown. */
+		static constexpr int MAX_UNREADABLE_ATTEMPTS = 3;
 
 		static constexpr int POLL_INTERVAL_MS = 700;
 

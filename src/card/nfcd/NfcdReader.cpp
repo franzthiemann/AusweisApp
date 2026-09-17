@@ -7,6 +7,7 @@
 #include "NfcdReader.h"
 
 #include "NfcdDbus.h"
+#include "SmartCardDefinitions.h"
 
 #include <QByteArray>
 #include <QDBusConnection>
@@ -159,6 +160,7 @@ void NfcdReader::disconnectReader(const QString& pError)
 
 	mPollTimer.stop();
 	mKnownTags.clear();
+	mUnreadableAttempts = 0;
 	handleTagLost();
 
 	if (mModeRequestId == 0)
@@ -188,6 +190,11 @@ void NfcdReader::onTagsChanged(const QList<QDBusObjectPath>& pTags)
 	if (paths == mKnownTags)
 	{
 		return;
+	}
+	if (!paths.isEmpty() && !mKnownTags.isEmpty() && paths != mKnownTags)
+	{
+		// A different tag is a different presentation of the card.
+		mUnreadableAttempts = 0;
 	}
 	mKnownTags = paths;
 	qCDebug(card_nfc) << "Tags:" << paths;
@@ -262,6 +269,33 @@ void NfcdReader::handleTagArrived(const QString& pTagPath)
 		mCard.reset();
 		return;
 	}
+
+	// A card can be detected as ISO-DEP and still fail to be read: the reads
+	// that identify it (EF.DIR, EF.CardAccess, the retry counter) are several
+	// APDU round trips, and a card only just within range drops one of them.
+	// CardInfoFactory reports that as CardType::UNKNOWN, and reporting it
+	// onwards presents the workflow with a card it cannot use and the user with
+	// nothing to do about it.
+	//
+	// Retry a couple of times instead -- the poll comes back every 700ms and the
+	// card is in the user's hand, so a marginal read usually succeeds on the
+	// next attempt. Only give up and report UNKNOWN once the tag has had a fair
+	// chance, so that a genuinely unsupported card still says so rather than
+	// retrying in silence forever.
+	if (getReaderInfo().getCardInfo().getCardType() == CardType::UNKNOWN
+			&& mUnreadableAttempts < MAX_UNREADABLE_ATTEMPTS)
+	{
+		mUnreadableAttempts++;
+		qCDebug(card_nfc) << "Card not readable yet on" << pTagPath
+						  << "- attempt" << mUnreadableAttempts << "of" << MAX_UNREADABLE_ATTEMPTS;
+		removeCardInfo();
+		releaseTag(pTagPath);
+		mCard.reset();
+		// Forget the tag so the next poll treats it as newly arrived.
+		mKnownTags.clear();
+		return;
+	}
+	mUnreadableAttempts = 0;
 
 	setCardInfoTagType(protocol & nfcd::PROTOCOL_T4A_TAG
 			? CardInfo::TagType::NFC_4A
