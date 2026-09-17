@@ -11,6 +11,7 @@
 #include "Env.h"
 #include "ReaderManager.h"
 #include "RemoteIfdServer.h"
+#include "TlsChecker.h"
 #include "controller/IfdServiceController.h"
 #include "context/IfdServiceContext.h"
 
@@ -116,6 +117,10 @@ bool IfdServiceHandler::process(const QByteArray& pMessage)
 	{
 		sendStatus();
 	}
+	else if (cmd == QLatin1String("IFD_FORGET"))
+	{
+		handleForget(obj);
+	}
 	else if (cmd == QLatin1String("IFD_SET_PIN")
 			|| cmd == QLatin1String("IFD_SET_CAN")
 			|| cmd == QLatin1String("IFD_SET_PUK"))
@@ -194,6 +199,42 @@ void IfdServiceHandler::handleSetName(const QJsonObject& pCommand)
 	// setDeviceName persists through AbstractSettings itself; there is no
 	// instance save() to call.
 	Env::getSingleton<AppSettings>()->getRemoteServiceSettings().setDeviceName(name);
+	sendStatus();
+}
+
+
+void IfdServiceHandler::handleForget(const QJsonObject& pCommand)
+{
+	const auto& hex = pCommand[QLatin1String("fingerprint")].toString();
+	if (hex.isEmpty())
+	{
+		sendError(QStringLiteral("IFD_FORGET requires a fingerprint"));
+		return;
+	}
+
+	const auto& fingerprint = QByteArray::fromHex(hex.toLatin1());
+	auto& settings = Env::getSingleton<AppSettings>()->getRemoteServiceSettings();
+	if (settings.getRemoteInfo(fingerprint).getFingerprint().isEmpty())
+	{
+		sendError(QStringLiteral("No paired device with that fingerprint"));
+		return;
+	}
+
+	// Dropping the trust alone would leave an already-established connection
+	// running until the next restart, so "forgotten" would not be true yet. If
+	// the forgotten device is the one currently connected, end the session too.
+	const bool forgettingCurrentPeer = mServer && mServer->isConnected()
+			&& RemoteServiceSettings::generateFingerprint(
+					TlsChecker::getRootCertificate({mServer->getCurrentCertificate()})) == fingerprint;
+
+	settings.removeTrustedCertificate(fingerprint);
+
+	if (forgettingCurrentPeer && mContext)
+	{
+		qCDebug(ifd) << "Forgot the connected device; ending its session";
+		mContext->killWorkflow();
+	}
+
 	sendStatus();
 }
 
